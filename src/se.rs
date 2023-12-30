@@ -70,8 +70,11 @@ impl<W: Write> Serializer<W> {
     /// use serde_sbif::{Serializer, Compression};
     /// fn serialize_to_bytes<T: serde::Serialize>(value: &T) -> Vec<u8> {
     ///     let mut buffer = Vec::new();
-    ///     let mut serializer = Serializer::new(&mut buffer, Compression::default()).unwrap();
-    ///     value.serialize(&mut serializer).unwrap();
+    /// 
+    ///     {
+    ///         let mut serializer = Serializer::new(&mut buffer, Compression::default()).unwrap();
+    ///         value.serialize(&mut serializer).unwrap();
+    ///     }
     /// 
     ///     buffer
     /// }
