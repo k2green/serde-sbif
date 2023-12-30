@@ -11,6 +11,8 @@ mod se;
 pub use crate::de::{from_reader, from_slice, Deserializer};
 pub use crate::se::{to_bytes, to_writer, Serializer};
 
+pub type Result<T> = std::result::Result<T, Error>;
+
 pub(crate) mod data_ids {
     pub const NULL_ID: u8 = 0;
     pub const BOOL_ID: u8 = 1;
@@ -125,7 +127,7 @@ impl FileHeader {
         }
     }
 
-    pub fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+    pub fn to_writer<W: Write>(&self, writer: &mut W) -> Result<()> {
         let name_bytes = self.header_name.as_bytes();
         writer
             .write_u16::<ByteOrder>(name_bytes.len() as u16)
@@ -153,13 +155,13 @@ impl FileHeader {
     }
 
     #[cfg(test)]
-    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buffer = Vec::new();
         self.to_writer(&mut buffer)?;
         Ok(buffer)
     }
 
-    pub fn from_reader<R: Read>(reader: &mut R) -> Result<Self, Error> {
+    pub fn from_reader<R: Read>(reader: &mut R) -> Result<Self> {
         let header_name = {
             let name_length = reader.read_u16::<ByteOrder>().map_err(Error::IoError)? as usize;
             let mut buffer = vec![0_u8; name_length];
