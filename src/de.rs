@@ -53,8 +53,8 @@ impl<R: Read> Deserializer<R> {
     /// use serde_sbif::Deserializer;
     /// fn deserialize_from_bytes<'a, T: serde::Deserialize<'a>>(bytes: &[u8]) -> T {
     ///     let mut cursor = std::io::Cursor::new(bytes);
-    ///     let mut deserializer = Deserializer::new(&mut cursor)?;
-    ///     T::deserialize(&mut deserializer)
+    ///     let mut deserializer = Deserializer::new(&mut cursor).unwrap();
+    ///     T::deserialize(&mut deserializer).unwrap()
     /// }
     /// ```
     pub fn new(mut reader: R) -> Result<Self, Error> {
