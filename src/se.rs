@@ -196,7 +196,7 @@ impl<'a, 'b> serde::ser::Serializer for &'a mut Serializer<'b> {
         _variant: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::NEWTYPE_VARIANT_ID).map_err(Error::IoError)?;
+        self.0.write_u8(crate::data_ids::ENUM_VARIANT_ID).map_err(Error::IoError)?;
         self.0.write_u32::<ByteOrder>(variant_index).map_err(Error::IoError)?;
         value.serialize(self)
     }
@@ -231,7 +231,7 @@ impl<'a, 'b> serde::ser::Serializer for &'a mut Serializer<'b> {
         _variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        self.0.write_u8(crate::data_ids::TUPLE_VARIANT_ID).map_err(Error::IoError)?;
+        self.0.write_u8(crate::data_ids::ENUM_VARIANT_ID).map_err(Error::IoError)?;
         self.0.write_u32::<ByteOrder>(variant_index).map_err(Error::IoError)?;
         self.0.write_u32::<ByteOrder>(len as u32).map_err(Error::IoError)?;
         Ok(self)
@@ -261,7 +261,7 @@ impl<'a, 'b> serde::ser::Serializer for &'a mut Serializer<'b> {
         _variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        self.0.write_u8(crate::data_ids::STRUCT_VARIANT_ID).map_err(Error::IoError)?;
+        self.0.write_u8(crate::data_ids::ENUM_VARIANT_ID).map_err(Error::IoError)?;
         self.0.write_u32::<ByteOrder>(variant_index).map_err(Error::IoError)?;
         self.0.write_u32::<ByteOrder>(len as u32).map_err(Error::IoError)?;
         Ok(self)
@@ -476,12 +476,12 @@ mod tests {
         let test = no_compression_serialization_test(&TestEnum::Unit);
         assert_eq!(test.as_slice(), &[data_ids::UNIT_VARIANT_ID, 0, 0, 0, 0]);
         let test = no_compression_serialization_test(&TestEnum::NewType(1));
-        assert_eq!(test.as_slice(), &[data_ids::NEWTYPE_VARIANT_ID, 0, 0, 0, 1, data_ids::U8_ID, 1]);
+        assert_eq!(test.as_slice(), &[data_ids::ENUM_VARIANT_ID, 0, 0, 0, 1, data_ids::U8_ID, 1]);
         let test = no_compression_serialization_test(&TestEnum::Tuple(1, 2));
-        assert_eq!(test.as_slice(), &[data_ids::TUPLE_VARIANT_ID, 0, 0, 0, 2, 0, 0, 0, 2, data_ids::U8_ID, 1, data_ids::U8_ID, 2]);
+        assert_eq!(test.as_slice(), &[data_ids::ENUM_VARIANT_ID, 0, 0, 0, 2, 0, 0, 0, 2, data_ids::U8_ID, 1, data_ids::U8_ID, 2]);
         let test = no_compression_serialization_test(&TestEnum::Struct { a: 1, b: 2 });
         assert_eq!(test.as_slice(), &[
-            data_ids::STRUCT_VARIANT_ID,
+            data_ids::ENUM_VARIANT_ID,
             0, 0, 0, 3, // variant index
             0, 0, 0, 2, // length
             data_ids::STR_ID, 0, 0, 0, 1, 97, data_ids::U8_ID, 1, // a

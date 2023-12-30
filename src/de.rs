@@ -95,9 +95,7 @@ impl<'de, 'a, 'b> serde::de::Deserializer<'de> for &'a mut Deserializer<'b> {
                 let variant = self.0.read_u32::<ByteOrder>().map_err(Error::IoError)?;
                 visitor.visit_enum(variant.into_deserializer())
             },
-            data_ids::NEWTYPE_VARIANT_ID | data_ids::TUPLE_VARIANT_ID | data_ids::STRUCT_VARIANT_ID => {
-                visitor.visit_enum(EnumAccess { de: self })
-            },
+            data_ids::ENUM_VARIANT_ID => visitor.visit_enum(EnumAccess { de: self }),
             data_ids::TUPLE_STRUCT_ID => {
                 self.0.read_u8().map_err(Error::IoError)?;
                 let length = self.0.read_u32::<ByteOrder>().map_err(Error::IoError)? as usize;
@@ -307,15 +305,8 @@ impl<'de, 'a, 'b> serde::de::Deserializer<'de> for &'a mut Deserializer<'b> {
                 self.0.read_u32::<ByteOrder>().map_err(Error::IoError)?;
                 visitor.visit_enum(variants[variant_index as usize].into_deserializer())
             },
-            data_ids::NEWTYPE_VARIANT_ID | data_ids::TUPLE_VARIANT_ID | data_ids::STRUCT_VARIANT_ID => {
-                visitor.visit_enum(EnumAccess { de: self })
-            },
-            found => Err(Error::InvalidDataId { expected: format!("one of ({})'", [
-                data_ids::UNIT_VARIANT_ID.to_string(),
-                data_ids::NEWTYPE_VARIANT_ID.to_string(),
-                data_ids::TUPLE_VARIANT_ID.to_string(),
-                data_ids::STRUCT_VARIANT_ID.to_string(),
-            ].join(", ")), found }),
+            data_ids::ENUM_VARIANT_ID => visitor.visit_enum(EnumAccess { de: self }),
+            found => Err(Error::InvalidDataId { expected: format!("{} or {}", data_ids::UNIT_VARIANT_ID, data_ids::ENUM_VARIANT_ID), found }),
         }
     }
 
@@ -329,9 +320,7 @@ impl<'de, 'a, 'b> serde::de::Deserializer<'de> for &'a mut Deserializer<'b> {
                 let string = String::from_utf8(buffer).map_err(Error::FromUtf8Error)?;
                 visitor.visit_str(&string)
             },
-            data_ids::UNIT_VARIANT_ID | data_ids::TUPLE_VARIANT_ID | data_ids::STRUCT_VARIANT_ID | data_ids::NEWTYPE_VARIANT_ID => {
-                visitor.visit_u32(argument)
-            },
+            data_ids::UNIT_VARIANT_ID | data_ids::ENUM_VARIANT_ID => visitor.visit_u32(argument),
             v => Err(Error::InvalidDataId { expected: String::from("an identifier"), found: v }),
         }
     }

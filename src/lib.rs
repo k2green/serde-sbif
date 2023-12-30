@@ -27,11 +27,9 @@ pub(crate) mod data_ids {
     pub const SEQ_ID: u8 = 15;
     pub const TUPLE_ID: u8 = 16;
     pub const UNIT_VARIANT_ID: u8 = 17;
-    pub const NEWTYPE_VARIANT_ID: u8 = 18;
-    pub const TUPLE_VARIANT_ID: u8 = 19;
-    pub const STRUCT_VARIANT_ID: u8 = 20;
-    pub const TUPLE_STRUCT_ID: u8 = 21;
-    pub const MAP_ID: u8 = 22;
+    pub const ENUM_VARIANT_ID: u8 = 18;
+    pub const TUPLE_STRUCT_ID: u8 = 19;
+    pub const MAP_ID: u8 = 20;
 }
 
 #[derive(Debug, Error)]
