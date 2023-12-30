@@ -15,44 +15,58 @@ pub fn to_bytes<T: serde::Serialize>(value: &T, compression: Compression) -> Res
     Ok(buffer)
 }
 
-enum Writer<'a> {
-    Borrowed(&'a mut dyn Write),
-    Owned(Box<dyn Write + 'a>),
+pub fn to_writer<W: Write, T: serde::Serialize>(writer: W, value: &T, compression: Compression) -> Result<(), Error> {
+    let mut serializer = Serializer::new(writer, compression)?;
+    value.serialize(&mut serializer)?;
+    drop(serializer);
+
+    Ok(())
 }
 
-impl<'a> Write for Writer<'a> {
+enum Writer<W: Write> {
+    None(W),
+    Deflate(DeflateEncoder<W>),
+    GZip(GzEncoder<W>),
+    ZLib(ZlibEncoder<W>),
+}
+
+impl<W: Write> Write for Writer<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         match self {
-            Writer::Borrowed(w) => w.write(buf),
-            Writer::Owned(w) => w.write(buf),
+            Self::None(w) => w.write(buf),
+            Self::Deflate(w) => w.write(buf),
+            Self::GZip(w) => w.write(buf),
+            Self::ZLib(w) => w.write(buf),
         }
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
         match self {
-            Writer::Borrowed(w) => w.flush(),
-            Writer::Owned(w) => w.flush(),
+            Self::None(w) => w.flush(),
+            Self::Deflate(w) => w.flush(),
+            Self::GZip(w) => w.flush(),
+            Self::ZLib(w) => w.flush(),
         }
     }
 }
 
-pub struct Serializer<'a>(Writer<'a>);
+pub struct Serializer<W: Write>(Writer<W>);
 
-impl<'a> Serializer<'a> {
-    pub fn new<W: Write>(writer: &'a mut W, compression: Compression) -> Result<Self, Error> {
-        FileHeader::new(compression).to_writer(writer)?;
-        let writer: Writer<'a> = match compression {
-            Compression::None => Writer::Borrowed(writer),
-            Compression::Deflate(v) => Writer::Owned(Box::new(DeflateEncoder::new(writer, flate2::Compression::new(v)))),
-            Compression::Gzip(v) => Writer::Owned(Box::new(GzEncoder::new(writer, flate2::Compression::new(v)))),
-            Compression::Zlib(v) => Writer::Owned(Box::new(ZlibEncoder::new(writer, flate2::Compression::new(v)))),
+impl<W: Write> Serializer<W> {
+    pub fn new(mut writer: W, compression: Compression) -> Result<Self, Error> {
+        FileHeader::new(compression).to_writer(&mut writer)?;
+        let writer: Writer<W> = match compression {
+            Compression::None => Writer::None(writer),
+            Compression::Deflate(v) => Writer::Deflate(DeflateEncoder::new(writer, flate2::Compression::new(v))),
+            Compression::GZip(v) => Writer::GZip(GzEncoder::new(writer, flate2::Compression::new(v))),
+            Compression::ZLib(v) => Writer::ZLib(ZlibEncoder::new(writer, flate2::Compression::new(v))),
         };
 
         Ok(Self(writer))
     }
 }
 
-impl<'a, 'b> serde::ser::Serializer for &'a mut Serializer<'b> {
+impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
     type Ok = ();
     type Error = Error;
 
@@ -268,7 +282,7 @@ impl<'a, 'b> serde::ser::Serializer for &'a mut Serializer<'b> {
     }
 }
 
-impl<'a, 'b> serde::ser::SerializeSeq for &'a mut Serializer<'b> {
+impl<'a, W: Write> serde::ser::SerializeSeq for &'a mut Serializer<W> {
     type Ok = ();
     type Error = Error;
 
@@ -282,7 +296,7 @@ impl<'a, 'b> serde::ser::SerializeSeq for &'a mut Serializer<'b> {
     }
 }
 
-impl<'a, 'b> serde::ser::SerializeTuple for &'a mut Serializer<'b> {
+impl<'a, W: Write> serde::ser::SerializeTuple for &'a mut Serializer<W> {
     type Ok = ();
     type Error = Error;
 
@@ -296,7 +310,7 @@ impl<'a, 'b> serde::ser::SerializeTuple for &'a mut Serializer<'b> {
     }
 }
 
-impl<'a, 'b> serde::ser::SerializeTupleStruct for &'a mut Serializer<'b> {
+impl<'a, W: Write> serde::ser::SerializeTupleStruct for &'a mut Serializer<W> {
     type Ok = ();
     type Error = Error;
 
@@ -310,7 +324,7 @@ impl<'a, 'b> serde::ser::SerializeTupleStruct for &'a mut Serializer<'b> {
     }
 }
 
-impl<'a, 'b> serde::ser::SerializeTupleVariant for &'a mut Serializer<'b> {
+impl<'a, W: Write> serde::ser::SerializeTupleVariant for &'a mut Serializer<W> {
     type Ok = ();
     type Error = Error;
 
@@ -324,7 +338,7 @@ impl<'a, 'b> serde::ser::SerializeTupleVariant for &'a mut Serializer<'b> {
     }
 }
 
-impl<'a, 'b> serde::ser::SerializeMap for &'a mut Serializer<'b> {
+impl<'a, W: Write> serde::ser::SerializeMap for &'a mut Serializer<W> {
     type Ok = ();
     type Error = Error;
 
@@ -343,7 +357,7 @@ impl<'a, 'b> serde::ser::SerializeMap for &'a mut Serializer<'b> {
     }
 }
 
-impl<'a, 'b> serde::ser::SerializeStruct for &'a mut Serializer<'b> {
+impl<'a, W: Write> serde::ser::SerializeStruct for &'a mut Serializer<W> {
     type Ok = ();
     type Error = Error;
 
@@ -362,7 +376,7 @@ impl<'a, 'b> serde::ser::SerializeStruct for &'a mut Serializer<'b> {
     }
 }
 
-impl<'a, 'b> serde::ser::SerializeStructVariant for &'a mut Serializer<'b> {
+impl<'a, W: Write> serde::ser::SerializeStructVariant for &'a mut Serializer<W> {
     type Ok = ();
     type Error = Error;
 

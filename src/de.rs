@@ -54,8 +54,8 @@ impl<'a> Deserializer<'a> {
         let reader = match header.compression {
             Compression::None => Reader::Borrowed(BufPeekReader::new(reader)),
             Compression::Deflate(_) => Reader::Owned(BufPeekReader::new(Box::new(DeflateDecoder::new(reader)))),
-            Compression::Gzip(_) => Reader::Owned(BufPeekReader::new(Box::new(GzDecoder::new(reader)))),
-            Compression::Zlib(_) => Reader::Owned(BufPeekReader::new(Box::new(ZlibDecoder::new(reader)))),
+            Compression::GZip(_) => Reader::Owned(BufPeekReader::new(Box::new(GzDecoder::new(reader)))),
+            Compression::ZLib(_) => Reader::Owned(BufPeekReader::new(Box::new(ZlibDecoder::new(reader)))),
         };
 
         Ok(Self(reader))
@@ -474,8 +474,8 @@ mod tests {
     fn deserialization_test<T: Serialize + DeserializeOwned + PartialEq + Debug>(value: T) {
         deserialization_test_base(&value, Compression::None);
         deserialization_test_base(&value, Compression::Deflate(6));
-        deserialization_test_base(&value, Compression::Gzip(6));
-        deserialization_test_base(&value, Compression::Zlib(6));
+        deserialization_test_base(&value, Compression::GZip(6));
+        deserialization_test_base(&value, Compression::ZLib(6));
     }
 
     #[test]
