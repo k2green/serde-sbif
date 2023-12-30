@@ -5,8 +5,11 @@ use err_derive::Error;
 
 pub(crate) type ByteOrder = byteorder::BigEndian;
 
-pub mod se;
-pub mod de;
+mod se;
+mod de;
+
+pub use crate::se::{to_writer, to_bytes, Serializer};
+pub use crate::de::{from_reader, from_slice, Deserializer};
 
 pub(crate) mod data_ids {
     pub const NULL_ID: u8 = 0;
