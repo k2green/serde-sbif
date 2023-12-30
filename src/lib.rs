@@ -89,6 +89,7 @@ impl serde::de::Error for Error {
     }
 }
 
+/// The compression format and level used for the sbif file
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Compression {
     None,
