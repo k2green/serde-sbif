@@ -6,9 +6,9 @@ use serde::Serialize;
 
 use crate::{Compression, Error, FileHeader, ByteOrder};
 
-pub fn to_bytes<T: serde::Serialize>(value: &T) -> Result<Vec<u8>, Error> {
+pub fn to_bytes<T: serde::Serialize>(value: &T, compression: Compression) -> Result<Vec<u8>, Error> {
     let mut buffer = Vec::new();
-    let mut serializer = Serializer::new(&mut buffer, Compression::default())?;
+    let mut serializer = Serializer::new(&mut buffer, compression)?;
     value.serialize(&mut serializer)?;
     drop(serializer);
 
@@ -392,9 +392,11 @@ mod tests {
     use super::*;
 
     fn no_compression_serialization_test<T: serde::Serialize>(value: &T) -> Vec<u8> {
-        let serialized = to_bytes(value).unwrap();
-        assert!(serialized.len() >= 8);
-        assert_eq!(&serialized[0..8], &[0, 4, 83, 66, 73, 70, 1, 0]);
+        let compression = Compression::None;
+        let default_hdr_bytes = FileHeader::new(compression).to_bytes().unwrap();
+        let serialized = to_bytes(value, compression).unwrap();
+        assert!(serialized.len() >= default_hdr_bytes.len());
+        assert_eq!(&serialized[0..8], default_hdr_bytes.as_slice());
 
         (&serialized[8..]).to_vec()
     }
@@ -529,11 +531,24 @@ mod tests {
         map.insert(3, 4);
 
         let test = no_compression_serialization_test(&map);
-        assert_eq!(test.as_slice(), &[
-            data_ids::MAP_ID,
-            0, 0, 0, 2, // length
-            data_ids::U8_ID, 1, data_ids::U8_ID, 2,
-            data_ids::U8_ID, 3, data_ids::U8_ID, 4,
-        ]);
+        assert_eq!(&test[..5], &[ data_ids::MAP_ID, 0, 0, 0, 2 ]);
+
+        let mut slices = Vec::new();
+        for i in 0..(test.len() - 5) / 4 {
+            slices.push(&test[5 + i * 4..5 + (i + 1) * 4]);
+        }
+
+        slices.sort_by(|a, b| a[1].cmp(&b[1]));
+        assert_eq!(slices.len(), 2);
+        assert_eq!(slices[0], &[data_ids::U8_ID, 1, data_ids::U8_ID, 2]);
+        assert_eq!(slices[1], &[data_ids::U8_ID, 3, data_ids::U8_ID, 4]);
+    }
+
+    #[test]
+    fn test_option_serialization() {
+        let test = no_compression_serialization_test(&Option::<u8>::None);
+        assert_eq!(test.as_slice(), &[data_ids::NULL_ID]);
+        let test = no_compression_serialization_test(&Option::<u8>::Some(1));
+        assert_eq!(test.as_slice(), &[data_ids::U8_ID, 1]);
     }
 }

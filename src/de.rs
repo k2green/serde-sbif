@@ -7,7 +7,7 @@ use serde::de::{DeserializeOwned, IntoDeserializer};
 
 use crate::{FileHeader, Error, Compression, data_ids, ByteOrder};
 
-pub fn from_bytes<T: DeserializeOwned>(bytes: Vec<u8>) -> Result<T, Error> {
+pub fn from_bytes<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, Error> {
     let mut cursor = Cursor::new(bytes);
     let mut deserializer = Deserializer::new(&mut cursor)?;
     T::deserialize(&mut deserializer)
@@ -33,12 +33,6 @@ impl<'a> Reader<'a> {
             Reader::Borrowed(r) => r.peek(),
             Reader::Owned(r) => r.peek(),
         }
-    }
-
-    fn read_remaining(&mut self) -> Result<Vec<u8>, Error> {
-        let mut buffer = Vec::new();
-        self.peek().read_to_end(&mut buffer).map_err(Error::IoError)?;
-        Ok(buffer)
     }
 }
 
@@ -245,7 +239,15 @@ impl<'de, 'a, 'b> serde::de::Deserializer<'de> for &'a mut Deserializer<'b> {
     fn deserialize_tuple<V: serde::de::Visitor<'de>>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error> {
         read_id(&mut self.0, data_ids::TUPLE_ID)?;
         let length = self.0.read_u32::<ByteOrder>().map_err(Error::IoError)? as usize;
-        visitor.visit_seq(SeqAccess::new(self, length))
+        if length != len {
+            return Err(Error::InvalidLength {
+                expected: len,
+                actual: length,
+                message: String::from("Invalid tuple length")
+            });
+        } else {
+            visitor.visit_seq(SeqAccess::new(self, length))
+        }
     }
 
     fn deserialize_tuple_struct<V: serde::de::Visitor<'de>>(
@@ -260,7 +262,7 @@ impl<'de, 'a, 'b> serde::de::Deserializer<'de> for &'a mut Deserializer<'b> {
             return Err(Error::InvalidLength {
                 expected: len,
                 actual: length,
-                message: String::from("Invalid tuple length")
+                message: String::from("Invalid tuple struct length")
             });
         } else {
             visitor.visit_seq(SeqAccess::new(self, length))
@@ -459,5 +461,125 @@ fn read_id<R: Read>(reader: &mut R, expected: u8) -> Result<(), Error> {
         Ok(())
     } else {
         Err(Error::InvalidDataId { expected: expected.to_string(), found })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fmt::Debug;
+
+    use serde::{Serialize, de::DeserializeOwned, Deserialize};
+
+    use crate::{se::to_bytes, Compression};
+
+    fn deserialization_test_base<T: Serialize + DeserializeOwned + PartialEq + Debug>(value: &T, compression: Compression) {
+        let serialized = to_bytes(&value, compression).unwrap();
+        let deserialized: T = crate::de::from_bytes(&serialized).unwrap();
+        assert_eq!(value, &deserialized);
+    }
+
+    fn deserialization_test<T: Serialize + DeserializeOwned + PartialEq + Debug>(value: T) {
+        deserialization_test_base(&value, Compression::None);
+        deserialization_test_base(&value, Compression::Deflate(6));
+        deserialization_test_base(&value, Compression::Gzip(6));
+        deserialization_test_base(&value, Compression::Zlib(6));
+    }
+
+    #[test]
+    fn test_bool_deserialization() {
+        deserialization_test(true);
+        deserialization_test(false);
+    }
+
+    #[test]
+    fn test_integer_deserialization() {
+        deserialization_test(100_i8);
+        deserialization_test(100_i16);
+        deserialization_test(100_i32);
+        deserialization_test(100_i64);
+        deserialization_test(100_u8);
+        deserialization_test(100_u16);
+        deserialization_test(100_u32);
+        deserialization_test(100_u64);
+    }
+
+    #[test]
+    fn test_float_deserialization() {
+        deserialization_test(100.0_f32);
+        deserialization_test(100.0_f64);
+    }
+
+    #[test]
+    fn test_char_deserialization() {
+        deserialization_test('a');
+        deserialization_test('-');
+    }
+
+    #[test]
+    fn test_string_deserialization() {
+        deserialization_test("Hello World!".to_string());
+    }
+
+    #[test]
+    fn test_bytes_deserialization() {
+        deserialization_test(b"Hello World!".to_vec());
+    }
+
+    #[test]
+    fn test_seq_deserialization() {
+        deserialization_test((0..10_u8).collect::<Vec<_>>());
+        deserialization_test((0..10_i8).collect::<Vec<_>>());
+        deserialization_test((0..10).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_tuple_deserialization() {
+        deserialization_test((0_u8, 'a', "Hello World!".to_string()));
+    }
+
+    #[test]
+    fn test_struct_deserialization() {
+        #[derive(Debug, PartialEq, Serialize, Deserialize)]
+        struct UnitStruct;
+
+        #[derive(Debug, PartialEq, Serialize, Deserialize)]
+        struct NewtypeStruct(u8);
+        
+        #[derive(Debug, PartialEq, Serialize, Deserialize)]
+        struct TupleStruct(u8, char, String);
+
+        #[derive(Debug, PartialEq, Serialize, Deserialize)]
+        struct Struct {
+            a: u8,
+            b: char,
+            c: String,
+        }
+
+        deserialization_test(UnitStruct);
+        deserialization_test(NewtypeStruct(1));
+        deserialization_test(TupleStruct(1, 'a', "Hello World!".to_string()));
+        deserialization_test(Struct { a: 1, b: 'a', c: "Hello World!".to_string() });
+    }
+
+    #[test]
+    fn test_enum_deserialization() {
+        #[derive(Debug, PartialEq, Serialize, Deserialize)]
+        enum TestEnum {
+            Unit,
+            Newtype(u8),
+            Tuple(u8, char, String),
+            Struct { a: u8, b: char, c: String },
+        }
+
+        deserialization_test(TestEnum::Unit);
+        deserialization_test(TestEnum::Newtype(1));
+        deserialization_test(TestEnum::Tuple(1, 'a', "Hello World!".to_string()));
+        deserialization_test(TestEnum::Struct { a: 1, b: 'a', c: "Hello World!".to_string() });
+    }
+
+    #[test]
+    fn test_option_deserialization() {
+        deserialization_test(None::<u8>);
+        deserialization_test(Some(1_u8));
     }
 }

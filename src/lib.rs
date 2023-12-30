@@ -92,7 +92,7 @@ pub enum Compression {
 
 impl Default for Compression {
     fn default() -> Self {
-        Self::None
+        Self::Gzip(6)
     }
 }
 
@@ -100,6 +100,12 @@ pub(crate) struct FileHeader {
     pub(crate) compression: Compression,
     pub(crate) version: u8,
     pub(crate) header_name: String,
+}
+
+impl Default for FileHeader {
+    fn default() -> Self {
+        Self::new(Compression::default())
+    }
 }
 
 impl FileHeader {
@@ -134,6 +140,13 @@ impl FileHeader {
         };
 
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buffer = Vec::new();
+        self.to_writer(&mut buffer)?;
+        Ok(buffer)
     }
 
     pub fn from_reader<R: Read>(reader: &mut R) -> Result<Self, Error> {
