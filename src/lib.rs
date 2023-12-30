@@ -5,8 +5,11 @@ use err_derive::Error;
 
 pub(crate) type ByteOrder = byteorder::BigEndian;
 
-pub mod se;
-pub mod de;
+mod se;
+mod de;
+
+pub use crate::se::{to_writer, to_bytes, Serializer};
+pub use crate::de::{from_reader, from_slice, Deserializer};
 
 pub(crate) mod data_ids {
     pub const NULL_ID: u8 = 0;
@@ -84,13 +87,13 @@ impl serde::de::Error for Error {
 pub enum Compression {
     None,
     Deflate(u32),
-    Gzip(u32),
-    Zlib(u32)
+    GZip(u32),
+    ZLib(u32)
 }
 
 impl Default for Compression {
     fn default() -> Self {
-        Self::Gzip(6)
+        Self::GZip(6)
     }
 }
 
@@ -127,11 +130,11 @@ impl FileHeader {
                 writer.write_u8(1).map_err(Error::IoError)?;
                 writer.write_u32::<ByteOrder>(v).map_err(Error::IoError)?;
             },
-            Compression::Gzip(v) => {
+            Compression::GZip(v) => {
                 writer.write_u8(2).map_err(Error::IoError)?;
                 writer.write_u32::<ByteOrder>(v).map_err(Error::IoError)?;
             },
-            Compression::Zlib(v) => {
+            Compression::ZLib(v) => {
                 writer.write_u8(3).map_err(Error::IoError)?;
                 writer.write_u32::<ByteOrder>(v).map_err(Error::IoError)?;
             },
@@ -159,8 +162,8 @@ impl FileHeader {
         let compression = match reader.read_u8().map_err(Error::IoError)? {
             0 => Compression::None,
             1 => Compression::Deflate(reader.read_u32::<ByteOrder>().map_err(Error::IoError)?),
-            2 => Compression::Gzip(reader.read_u32::<ByteOrder>().map_err(Error::IoError)?),
-            3 => Compression::Zlib(reader.read_u32::<ByteOrder>().map_err(Error::IoError)?),
+            2 => Compression::GZip(reader.read_u32::<ByteOrder>().map_err(Error::IoError)?),
+            3 => Compression::ZLib(reader.read_u32::<ByteOrder>().map_err(Error::IoError)?),
             v => return Err(Error::InvalidCompression(v)),
         };
 
