@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use crate::{ByteOrder, Compression, Error, FileHeader};
 
+/// Serializes a value into a byte vector.
 pub fn to_bytes<T: serde::Serialize>(
     value: &T,
     compression: Compression,
@@ -18,6 +19,7 @@ pub fn to_bytes<T: serde::Serialize>(
     Ok(buffer)
 }
 
+/// Serializes a value into a writer.
 pub fn to_writer<W: Write, T: serde::Serialize>(
     writer: W,
     value: &T,
@@ -57,9 +59,23 @@ impl<W: Write> Write for Writer<W> {
     }
 }
 
+/// Serializer for SBIF format.
 pub struct Serializer<W: Write>(Writer<W>);
 
 impl<W: Write> Serializer<W> {
+    /// Creates a new serializer from a writer. The serializer will automatically write the header to the writer based on the compression type.
+    /// 
+    /// Example:
+    /// ```
+    /// use serde_sbif::Serializer;
+    /// fn serialize_to_bytes<T: serde::Serialize>(value: &T) -> Vec<u8> {
+    ///     let mut buffer = Vec::new();
+    ///     let mut serializer = Serializer::new(&mut buffer, Compression::default())?;
+    ///     value.serialize(&mut serializer).unwrap();
+    /// 
+    ///     buffer
+    /// }
+    /// ```
     pub fn new(mut writer: W, compression: Compression) -> Result<Self, Error> {
         FileHeader::new(compression).to_writer(&mut writer)?;
         let writer: Writer<W> = match compression {

@@ -10,12 +10,14 @@ use serde::{de::IntoDeserializer, Deserialize};
 
 use crate::{data_ids, ByteOrder, Compression, Error, FileHeader};
 
+/// Deserializes a value from a byte slice.
 pub fn from_slice<'a, T: Deserialize<'a>>(bytes: &[u8]) -> Result<T, Error> {
     let mut cursor = Cursor::new(bytes);
     let mut deserializer = Deserializer::new(&mut cursor)?;
     T::deserialize(&mut deserializer)
 }
 
+/// Deserializes a value from a reader.
 pub fn from_reader<'a, R: Read, T: Deserialize<'a>>(reader: R) -> Result<T, Error> {
     let mut deserializer = Deserializer::new(reader)?;
     T::deserialize(&mut deserializer)
@@ -39,9 +41,22 @@ impl<R: Read> Read for Reader<R> {
     }
 }
 
+/// A deserializer for the SBIF format.
 pub struct Deserializer<R: Read>(BufPeekReader<Reader<R>>);
 
 impl<R: Read> Deserializer<R> {
+    /// Creates a new deserializer from a reader, the reader must be at the start of the SBIF file and the method will return an error if the header is invalid.
+    /// The compression type will be obtained from the header.
+    /// 
+    /// Example
+    /// ```
+    /// use serde_sbif::Deserializer;
+    /// fn deserialize_from_bytes<'a, T: serde::Deserialize<'a>>(bytes: &[u8]) -> T {
+    ///     let mut cursor = std::io::Cursor::new(bytes);
+    ///     let mut deserializer = Deserializer::new(&mut cursor)?;
+    ///     T::deserialize(&mut deserializer)
+    /// }
+    /// ```
     pub fn new(mut reader: R) -> Result<Self, Error> {
         let header = FileHeader::from_reader(&mut reader)?;
 
