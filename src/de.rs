@@ -2,45 +2,45 @@ use std::{io::{Read, Cursor}, vec};
 
 use byteorder::ReadBytesExt;
 use flate2::read::{DeflateDecoder, GzDecoder, ZlibDecoder};
-use peekread::{BufPeekReader, PeekRead, PeekCursor};
-use serde::de::{DeserializeOwned, IntoDeserializer};
+use peekread::{BufPeekReader, PeekRead};
+use serde::{de::IntoDeserializer, Deserialize};
 
 use crate::{FileHeader, Error, Compression, data_ids, ByteOrder};
 
-pub fn from_bytes<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, Error> {
+pub fn from_slice<'a, T: Deserialize<'a>>(bytes: &[u8]) -> Result<T, Error> {
     let mut cursor = Cursor::new(bytes);
     let mut deserializer = Deserializer::new(&mut cursor)?;
     T::deserialize(&mut deserializer)
 }
 
-enum Reader<'a> {
-    Borrowed(BufPeekReader<&'a mut dyn Read>),
-    Owned(BufPeekReader<Box<dyn Read + 'a>>),
+pub fn from_reader<'a, R: Read, T: Deserialize<'a>>(reader: R) -> Result<T, Error> {
+    let mut deserializer = Deserializer::new(reader)?;
+    T::deserialize(&mut deserializer)
 }
 
-impl<'a> Read for Reader<'a> {
+enum Reader<R: Read> {
+    None(R),
+    Deflate(DeflateDecoder<R>),
+    GZip(GzDecoder<R>),
+    ZLib(ZlibDecoder<R>),
+}
+
+impl<R: Read> Read for Reader<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         match self {
-            Reader::Borrowed(r) => r.read(buf),
-            Reader::Owned(r) => r.read(buf),
+            Self::None(r) => r.read(buf),
+            Self::Deflate(r) => r.read(buf),
+            Self::GZip(r) => r.read(buf),
+            Self::ZLib(r) => r.read(buf),
         }
     }
 }
 
-impl<'a> Reader<'a> {
-    fn peek(&mut self) -> PeekCursor {
-        match self {
-            Reader::Borrowed(r) => r.peek(),
-            Reader::Owned(r) => r.peek(),
-        }
-    }
-}
+pub struct Deserializer<R: Read>(BufPeekReader<Reader<R>>);
 
-pub struct Deserializer<'a>(Reader<'a>);
-
-impl<'a> Deserializer<'a> {
-    pub fn new<R: Read + 'a>(reader: &'a mut R) -> Result<Self, Error> {
-        let header = FileHeader::from_reader(reader)?;
+impl<R: Read> Deserializer<R> {
+    pub fn new(mut reader: R) -> Result<Self, Error> {
+        let header = FileHeader::from_reader(&mut reader)?;
         
         if header.header_name != "SBIF" {
             return Err(Error::InvalidHeader(header.header_name));
@@ -52,17 +52,17 @@ impl<'a> Deserializer<'a> {
         }
 
         let reader = match header.compression {
-            Compression::None => Reader::Borrowed(BufPeekReader::new(reader)),
-            Compression::Deflate(_) => Reader::Owned(BufPeekReader::new(Box::new(DeflateDecoder::new(reader)))),
-            Compression::GZip(_) => Reader::Owned(BufPeekReader::new(Box::new(GzDecoder::new(reader)))),
-            Compression::ZLib(_) => Reader::Owned(BufPeekReader::new(Box::new(ZlibDecoder::new(reader)))),
+            Compression::None => BufPeekReader::new(Reader::None(reader)),
+            Compression::Deflate(_) => BufPeekReader::new(Reader::Deflate(DeflateDecoder::new(reader))),
+            Compression::GZip(_) => BufPeekReader::new(Reader::GZip(GzDecoder::new(reader))),
+            Compression::ZLib(_) => BufPeekReader::new(Reader::ZLib(ZlibDecoder::new(reader))),
         };
 
         Ok(Self(reader))
     }
 }
 
-impl<'de, 'a, 'b> serde::de::Deserializer<'de> for &'a mut Deserializer<'b> {
+impl<'de, 'a, R: Read> serde::de::Deserializer<'de> for &'a mut Deserializer<R> {
     type Error = Error;
 
     fn deserialize_any<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
@@ -329,14 +329,14 @@ impl<'de, 'a, 'b> serde::de::Deserializer<'de> for &'a mut Deserializer<'b> {
     }
 }
 
-struct SeqAccess<'a, 'b> {
-    de: &'a mut Deserializer<'b>,
+struct SeqAccess<'a, R: Read> {
+    de: &'a mut Deserializer<R>,
     len: usize,
     current: usize
 }
 
-impl<'a, 'b> SeqAccess<'a, 'b> {
-    fn new(de: &'a mut Deserializer<'b>, len: usize) -> Self {
+impl<'a, R: Read> SeqAccess<'a, R> {
+    fn new(de: &'a mut Deserializer<R>, len: usize) -> Self {
         Self {
             de,
             len,
@@ -345,7 +345,7 @@ impl<'a, 'b> SeqAccess<'a, 'b> {
     }
 }
 
-impl<'de, 'a, 'b> serde::de::SeqAccess<'de> for SeqAccess<'a, 'b> {
+impl<'de, 'a, R: Read> serde::de::SeqAccess<'de> for SeqAccess<'a, R> {
     type Error = Error;
 
     fn next_element_seed<T: serde::de::DeserializeSeed<'de>>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> {
@@ -362,15 +362,15 @@ impl<'de, 'a, 'b> serde::de::SeqAccess<'de> for SeqAccess<'a, 'b> {
     }
 }
 
-struct MapAccess<'a, 'b> {
-    de: &'a mut Deserializer<'b>,
+struct MapAccess<'a, R: Read> {
+    de: &'a mut Deserializer<R>,
     len: usize,
     current_key: usize,
     current_value: usize
 }
 
-impl<'a, 'b> MapAccess<'a, 'b> {
-    fn new(de: &'a mut Deserializer<'b>, len: usize) -> Self {
+impl<'a, R: Read> MapAccess<'a, R> {
+    fn new(de: &'a mut Deserializer<R>, len: usize) -> Self {
         Self {
             de,
             len,
@@ -380,7 +380,7 @@ impl<'a, 'b> MapAccess<'a, 'b> {
     }
 }
 
-impl<'de, 'a, 'b> serde::de::MapAccess<'de> for MapAccess<'a, 'b> {
+impl<'de, 'a, R: Read> serde::de::MapAccess<'de> for MapAccess<'a, R> {
     type Error = Error;
 
     fn next_key_seed<K: serde::de::DeserializeSeed<'de>>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error> {        if self.current_key < self.len {
@@ -400,11 +400,11 @@ impl<'de, 'a, 'b> serde::de::MapAccess<'de> for MapAccess<'a, 'b> {
     }
 }
 
-struct EnumAccess<'a, 'b> {
-    de: &'a mut Deserializer<'b>,
+struct EnumAccess<'a, R: Read> {
+    de: &'a mut Deserializer<R>,
 }
 
-impl<'de, 'a, 'b> serde::de::EnumAccess<'de> for EnumAccess<'a, 'b> {
+impl<'de, 'a, R: Read> serde::de::EnumAccess<'de> for EnumAccess<'a, R> {
     type Error = Error;
     type Variant = Self;
 
@@ -414,7 +414,7 @@ impl<'de, 'a, 'b> serde::de::EnumAccess<'de> for EnumAccess<'a, 'b> {
     }
 }
 
-impl<'de, 'a, 'b> serde::de::VariantAccess<'de> for EnumAccess<'a, 'b> {
+impl<'de, 'a, R: Read> serde::de::VariantAccess<'de> for EnumAccess<'a, R> {
     type Error = Error;
 
     fn unit_variant(self) -> Result<(), Self::Error> {
@@ -467,7 +467,7 @@ mod tests {
 
     fn deserialization_test_base<T: Serialize + DeserializeOwned + PartialEq + Debug>(value: &T, compression: Compression) {
         let serialized = to_bytes(&value, compression).unwrap();
-        let deserialized: T = crate::de::from_bytes(&serialized).unwrap();
+        let deserialized: T = crate::de::from_slice(&serialized).unwrap();
         assert_eq!(value, &deserialized);
     }
 
