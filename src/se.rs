@@ -4,9 +4,12 @@ use byteorder::WriteBytesExt;
 use flate2::write::{DeflateEncoder, GzEncoder, ZlibEncoder};
 use serde::Serialize;
 
-use crate::{Compression, Error, FileHeader, ByteOrder};
+use crate::{ByteOrder, Compression, Error, FileHeader};
 
-pub fn to_bytes<T: serde::Serialize>(value: &T, compression: Compression) -> Result<Vec<u8>, Error> {
+pub fn to_bytes<T: serde::Serialize>(
+    value: &T,
+    compression: Compression,
+) -> Result<Vec<u8>, Error> {
     let mut buffer = Vec::new();
     let mut serializer = Serializer::new(&mut buffer, compression)?;
     value.serialize(&mut serializer)?;
@@ -15,7 +18,11 @@ pub fn to_bytes<T: serde::Serialize>(value: &T, compression: Compression) -> Res
     Ok(buffer)
 }
 
-pub fn to_writer<W: Write, T: serde::Serialize>(writer: W, value: &T, compression: Compression) -> Result<(), Error> {
+pub fn to_writer<W: Write, T: serde::Serialize>(
+    writer: W,
+    value: &T,
+    compression: Compression,
+) -> Result<(), Error> {
     let mut serializer = Serializer::new(writer, compression)?;
     value.serialize(&mut serializer)?;
     drop(serializer);
@@ -57,9 +64,15 @@ impl<W: Write> Serializer<W> {
         FileHeader::new(compression).to_writer(&mut writer)?;
         let writer: Writer<W> = match compression {
             Compression::None => Writer::None(writer),
-            Compression::Deflate(v) => Writer::Deflate(DeflateEncoder::new(writer, flate2::Compression::new(v))),
-            Compression::GZip(v) => Writer::GZip(GzEncoder::new(writer, flate2::Compression::new(v))),
-            Compression::ZLib(v) => Writer::ZLib(ZlibEncoder::new(writer, flate2::Compression::new(v))),
+            Compression::Deflate(v) => {
+                Writer::Deflate(DeflateEncoder::new(writer, flate2::Compression::new(v)))
+            }
+            Compression::GZip(v) => {
+                Writer::GZip(GzEncoder::new(writer, flate2::Compression::new(v)))
+            }
+            Compression::ZLib(v) => {
+                Writer::ZLib(ZlibEncoder::new(writer, flate2::Compression::new(v)))
+            }
         };
 
         Ok(Self(writer))
@@ -79,100 +92,138 @@ impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
     type SerializeStructVariant = Self;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::BOOL_ID).map_err(Error::IoError)?;
-        self.0.write_u8(if v { 1 } else { 0 }).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::BOOL_ID)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u8(if v { 1 } else { 0 })
+            .map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::I8_ID).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::I8_ID)
+            .map_err(Error::IoError)?;
         self.0.write_i8(v).map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::I16_ID).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::I16_ID)
+            .map_err(Error::IoError)?;
         self.0.write_i16::<ByteOrder>(v).map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::I32_ID).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::I32_ID)
+            .map_err(Error::IoError)?;
         self.0.write_i32::<ByteOrder>(v).map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::I64_ID).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::I64_ID)
+            .map_err(Error::IoError)?;
         self.0.write_i64::<ByteOrder>(v).map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::U8_ID).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::U8_ID)
+            .map_err(Error::IoError)?;
         self.0.write_u8(v).map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::U16_ID).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::U16_ID)
+            .map_err(Error::IoError)?;
         self.0.write_u16::<ByteOrder>(v).map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::U32_ID).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::U32_ID)
+            .map_err(Error::IoError)?;
         self.0.write_u32::<ByteOrder>(v).map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::U64_ID).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::U64_ID)
+            .map_err(Error::IoError)?;
         self.0.write_u64::<ByteOrder>(v).map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::F32_ID).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::F32_ID)
+            .map_err(Error::IoError)?;
         self.0.write_f32::<ByteOrder>(v).map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::F64_ID).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::F64_ID)
+            .map_err(Error::IoError)?;
         self.0.write_f64::<ByteOrder>(v).map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
         let utf8_bytes = v.to_string().into_bytes();
-        self.0.write_u8(crate::data_ids::CHAR_ID).map_err(Error::IoError)?;
-        self.0.write_u8(utf8_bytes.len() as u8).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::CHAR_ID)
+            .map_err(Error::IoError)?;
         self.0.write(&utf8_bytes).map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
         let bytes = v.as_bytes();
-        self.0.write_u8(crate::data_ids::STR_ID).map_err(Error::IoError)?;
-        self.0.write_u32::<ByteOrder>(bytes.len() as u32).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::STR_ID)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u32::<ByteOrder>(bytes.len() as u32)
+            .map_err(Error::IoError)?;
         self.0.write(bytes).map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::BYTES_ID).map_err(Error::IoError)?;
-        self.0.write_u32::<ByteOrder>(v.len() as u32).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::BYTES_ID)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u32::<ByteOrder>(v.len() as u32)
+            .map_err(Error::IoError)?;
         self.0.write(v).map_err(Error::IoError)?;
         Ok(())
     }
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::NULL_ID).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::NULL_ID)
+            .map_err(Error::IoError)?;
         Ok(())
     }
 
-    fn serialize_some<T: ?Sized + serde::Serialize>(self, value: &T) -> Result<Self::Ok, Self::Error> {
+    fn serialize_some<T: ?Sized + serde::Serialize>(
+        self,
+        value: &T,
+    ) -> Result<Self::Ok, Self::Error> {
         value.serialize(self)
     }
 
@@ -190,8 +241,12 @@ impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
         variant_index: u32,
         _variant: &'static str,
     ) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::UNIT_VARIANT_ID).map_err(Error::IoError)?;
-        self.0.write_u32::<ByteOrder>(variant_index).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::UNIT_VARIANT_ID)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u32::<ByteOrder>(variant_index)
+            .map_err(Error::IoError)?;
         Ok(())
     }
 
@@ -210,21 +265,33 @@ impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
         _variant: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::ENUM_VARIANT_ID).map_err(Error::IoError)?;
-        self.0.write_u32::<ByteOrder>(variant_index).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::ENUM_VARIANT_ID)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u32::<ByteOrder>(variant_index)
+            .map_err(Error::IoError)?;
         value.serialize(self)
     }
 
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
         let len = len.ok_or(Error::LengthRequired)?;
-        self.0.write_u8(crate::data_ids::SEQ_ID).map_err(Error::IoError)?;
-        self.0.write_u32::<ByteOrder>(len as u32).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::SEQ_ID)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u32::<ByteOrder>(len as u32)
+            .map_err(Error::IoError)?;
         Ok(self)
     }
 
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        self.0.write_u8(crate::data_ids::TUPLE_ID).map_err(Error::IoError)?;
-        self.0.write_u32::<ByteOrder>(len as u32).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::TUPLE_ID)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u32::<ByteOrder>(len as u32)
+            .map_err(Error::IoError)?;
         Ok(self)
     }
 
@@ -233,8 +300,12 @@ impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
         _name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        self.0.write_u8(crate::data_ids::TUPLE_STRUCT_ID).map_err(Error::IoError)?;
-        self.0.write_u32::<ByteOrder>(len as u32).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::TUPLE_STRUCT_ID)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u32::<ByteOrder>(len as u32)
+            .map_err(Error::IoError)?;
         Ok(self)
     }
 
@@ -245,16 +316,26 @@ impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
         _variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        self.0.write_u8(crate::data_ids::ENUM_VARIANT_ID).map_err(Error::IoError)?;
-        self.0.write_u32::<ByteOrder>(variant_index).map_err(Error::IoError)?;
-        self.0.write_u32::<ByteOrder>(len as u32).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::ENUM_VARIANT_ID)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u32::<ByteOrder>(variant_index)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u32::<ByteOrder>(len as u32)
+            .map_err(Error::IoError)?;
         Ok(self)
     }
 
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
         let len = len.ok_or(Error::LengthRequired)?;
-        self.0.write_u8(crate::data_ids::MAP_ID).map_err(Error::IoError)?;
-        self.0.write_u32::<ByteOrder>(len as u32).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::MAP_ID)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u32::<ByteOrder>(len as u32)
+            .map_err(Error::IoError)?;
         Ok(self)
     }
 
@@ -263,8 +344,12 @@ impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
         _name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
-        self.0.write_u8(crate::data_ids::MAP_ID).map_err(Error::IoError)?;
-        self.0.write_u32::<ByteOrder>(len as u32).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::MAP_ID)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u32::<ByteOrder>(len as u32)
+            .map_err(Error::IoError)?;
         Ok(self)
     }
 
@@ -275,9 +360,15 @@ impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
         _variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        self.0.write_u8(crate::data_ids::ENUM_VARIANT_ID).map_err(Error::IoError)?;
-        self.0.write_u32::<ByteOrder>(variant_index).map_err(Error::IoError)?;
-        self.0.write_u32::<ByteOrder>(len as u32).map_err(Error::IoError)?;
+        self.0
+            .write_u8(crate::data_ids::ENUM_VARIANT_ID)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u32::<ByteOrder>(variant_index)
+            .map_err(Error::IoError)?;
+        self.0
+            .write_u32::<ByteOrder>(len as u32)
+            .map_err(Error::IoError)?;
         Ok(self)
     }
 }
@@ -286,7 +377,10 @@ impl<'a, W: Write> serde::ser::SerializeSeq for &'a mut Serializer<W> {
     type Ok = ();
     type Error = Error;
 
-    fn serialize_element<T: ?Sized + serde::Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
+    fn serialize_element<T: ?Sized + serde::Serialize>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), Self::Error> {
         value.serialize(&mut **self)?;
         Ok(())
     }
@@ -300,7 +394,10 @@ impl<'a, W: Write> serde::ser::SerializeTuple for &'a mut Serializer<W> {
     type Ok = ();
     type Error = Error;
 
-    fn serialize_element<T: ?Sized + serde::Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
+    fn serialize_element<T: ?Sized + serde::Serialize>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), Self::Error> {
         value.serialize(&mut **self)?;
         Ok(())
     }
@@ -314,7 +411,10 @@ impl<'a, W: Write> serde::ser::SerializeTupleStruct for &'a mut Serializer<W> {
     type Ok = ();
     type Error = Error;
 
-    fn serialize_field<T: ?Sized + serde::Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
+    fn serialize_field<T: ?Sized + serde::Serialize>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), Self::Error> {
         value.serialize(&mut **self)?;
         Ok(())
     }
@@ -328,7 +428,10 @@ impl<'a, W: Write> serde::ser::SerializeTupleVariant for &'a mut Serializer<W> {
     type Ok = ();
     type Error = Error;
 
-    fn serialize_field<T: ?Sized + serde::Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
+    fn serialize_field<T: ?Sized + serde::Serialize>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), Self::Error> {
         value.serialize(&mut **self)?;
         Ok(())
     }
@@ -347,7 +450,10 @@ impl<'a, W: Write> serde::ser::SerializeMap for &'a mut Serializer<W> {
         Ok(())
     }
 
-    fn serialize_value<T: ?Sized + serde::Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
+    fn serialize_value<T: ?Sized + serde::Serialize>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), Self::Error> {
         value.serialize(&mut **self)?;
         Ok(())
     }
@@ -449,19 +555,42 @@ mod tests {
         let test = no_compression_serialization_test(&1_f32);
         assert_eq!(test.as_slice(), &[data_ids::F32_ID, 63, 128, 0, 0]);
         let test = no_compression_serialization_test(&1_f64);
-        assert_eq!(test.as_slice(), &[data_ids::F64_ID, 63, 240, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(
+            test.as_slice(),
+            &[data_ids::F64_ID, 63, 240, 0, 0, 0, 0, 0, 0]
+        );
     }
 
     #[test]
     fn test_char_serialization() {
         let test = no_compression_serialization_test(&'a');
-        assert_eq!(test.as_slice(), &[data_ids::CHAR_ID, 1, 97]);
+        assert_eq!(test.as_slice(), &[data_ids::CHAR_ID, 97]);
     }
 
     #[test]
     fn test_string_serialization() {
         let test = no_compression_serialization_test(&"hello world");
-        assert_eq!(test.as_slice(), &[data_ids::STR_ID, 0, 0, 0, 11, 104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]);
+        assert_eq!(
+            test.as_slice(),
+            &[
+                data_ids::STR_ID,
+                0,
+                0,
+                0,
+                11,
+                104,
+                101,
+                108,
+                108,
+                111,
+                32,
+                119,
+                111,
+                114,
+                108,
+                100
+            ]
+        );
     }
 
     #[test]
@@ -484,23 +613,66 @@ mod tests {
             Unit,
             NewType(u8),
             Tuple(u8, u8),
-            Struct { a: u8, b: u8 }
+            Struct { a: u8, b: u8 },
         }
 
         let test = no_compression_serialization_test(&TestEnum::Unit);
         assert_eq!(test.as_slice(), &[data_ids::UNIT_VARIANT_ID, 0, 0, 0, 0]);
         let test = no_compression_serialization_test(&TestEnum::NewType(1));
-        assert_eq!(test.as_slice(), &[data_ids::ENUM_VARIANT_ID, 0, 0, 0, 1, data_ids::U8_ID, 1]);
+        assert_eq!(
+            test.as_slice(),
+            &[data_ids::ENUM_VARIANT_ID, 0, 0, 0, 1, data_ids::U8_ID, 1]
+        );
         let test = no_compression_serialization_test(&TestEnum::Tuple(1, 2));
-        assert_eq!(test.as_slice(), &[data_ids::ENUM_VARIANT_ID, 0, 0, 0, 2, 0, 0, 0, 2, data_ids::U8_ID, 1, data_ids::U8_ID, 2]);
+        assert_eq!(
+            test.as_slice(),
+            &[
+                data_ids::ENUM_VARIANT_ID,
+                0,
+                0,
+                0,
+                2,
+                0,
+                0,
+                0,
+                2,
+                data_ids::U8_ID,
+                1,
+                data_ids::U8_ID,
+                2
+            ]
+        );
         let test = no_compression_serialization_test(&TestEnum::Struct { a: 1, b: 2 });
-        assert_eq!(test.as_slice(), &[
-            data_ids::ENUM_VARIANT_ID,
-            0, 0, 0, 3, // variant index
-            0, 0, 0, 2, // length
-            data_ids::STR_ID, 0, 0, 0, 1, 97, data_ids::U8_ID, 1, // a
-            data_ids::STR_ID, 0, 0, 0, 1, 98, data_ids::U8_ID, 2  // b
-        ]);
+        assert_eq!(
+            test.as_slice(),
+            &[
+                data_ids::ENUM_VARIANT_ID,
+                0,
+                0,
+                0,
+                3, // variant index
+                0,
+                0,
+                0,
+                2, // length
+                data_ids::STR_ID,
+                0,
+                0,
+                0,
+                1,
+                97,
+                data_ids::U8_ID,
+                1, // a
+                data_ids::STR_ID,
+                0,
+                0,
+                0,
+                1,
+                98,
+                data_ids::U8_ID,
+                2 // b
+            ]
+        );
     }
 
     #[test]
@@ -518,7 +690,20 @@ mod tests {
         struct TupleTest(u8, u8);
 
         let test = no_compression_serialization_test(&TupleTest(1, 2));
-        assert_eq!(test.as_slice(), &[data_ids::TUPLE_STRUCT_ID, 0, 0, 0, 2, data_ids::U8_ID, 1, data_ids::U8_ID, 2]);
+        assert_eq!(
+            test.as_slice(),
+            &[
+                data_ids::TUPLE_STRUCT_ID,
+                0,
+                0,
+                0,
+                2,
+                data_ids::U8_ID,
+                1,
+                data_ids::U8_ID,
+                2
+            ]
+        );
     }
 
     #[test]
@@ -526,16 +711,36 @@ mod tests {
         #[derive(Serialize)]
         struct StructTest {
             a: u8,
-            b: u8
+            b: u8,
         }
 
         let test = no_compression_serialization_test(&StructTest { a: 1, b: 2 });
-        assert_eq!(test.as_slice(), &[
-            data_ids::MAP_ID,
-            0, 0, 0, 2, // length
-            data_ids::STR_ID, 0, 0, 0, 1, 97, data_ids::U8_ID, 1, // a
-            data_ids::STR_ID, 0, 0, 0, 1, 98, data_ids::U8_ID, 2  // b
-        ]);
+        assert_eq!(
+            test.as_slice(),
+            &[
+                data_ids::MAP_ID,
+                0,
+                0,
+                0,
+                2, // length
+                data_ids::STR_ID,
+                0,
+                0,
+                0,
+                1,
+                97,
+                data_ids::U8_ID,
+                1, // a
+                data_ids::STR_ID,
+                0,
+                0,
+                0,
+                1,
+                98,
+                data_ids::U8_ID,
+                2 // b
+            ]
+        );
     }
 
     #[test]
@@ -545,7 +750,7 @@ mod tests {
         map.insert(3, 4);
 
         let test = no_compression_serialization_test(&map);
-        assert_eq!(&test[..5], &[ data_ids::MAP_ID, 0, 0, 0, 2 ]);
+        assert_eq!(&test[..5], &[data_ids::MAP_ID, 0, 0, 0, 2]);
 
         let mut slices = Vec::new();
         for i in 0..(test.len() - 5) / 4 {

@@ -1,15 +1,15 @@
-use std::io::{Write, Read};
+use std::io::{Read, Write};
 
-use byteorder::{WriteBytesExt, ReadBytesExt};
+use byteorder::{ReadBytesExt, WriteBytesExt};
 use err_derive::Error;
 
 pub(crate) type ByteOrder = byteorder::BigEndian;
 
-mod se;
 mod de;
+mod se;
 
-pub use crate::se::{to_writer, to_bytes, Serializer};
 pub use crate::de::{from_reader, from_slice, Deserializer};
+pub use crate::se::{to_bytes, to_writer, Serializer};
 
 pub(crate) mod data_ids {
     pub const NULL_ID: u8 = 0;
@@ -49,36 +49,42 @@ pub enum Error {
     LengthRequired,
     #[error(display = "Unexpected string")]
     UnexpectedString,
-    #[error(display = "Invalid access order. You cannot access 2 map keys or 2 map values in a row")]
+    #[error(
+        display = "Invalid access order. You cannot access 2 map keys or 2 map values in a row"
+    )]
     InvalidMapAccess,
     #[error(display = "Invalid sbif header: expected 'SBIF', found {}", _0)]
     InvalidHeader(String),
     #[error(display = "Invalid data id: expected {}, found {}", expected, found)]
-    InvalidDataId {
-        expected: String,
-        found: u8,
-    },
-    #[error(display = "Invalid sbif version: expected {}, found {}", expected, found)]
-    InvalidVersion {
-        expected: u8,
-        found: u8,
-    },
+    InvalidDataId { expected: String, found: u8 },
+    #[error(
+        display = "Invalid sbif version: expected {}, found {}",
+        expected,
+        found
+    )]
+    InvalidVersion { expected: u8, found: u8 },
     #[error(display = "{}: expected {}, actual {}", message, expected, actual)]
     InvalidLength {
         expected: usize,
         actual: usize,
-        message: String
+        message: String,
     },
 }
 
 impl serde::ser::Error for Error {
-    fn custom<T>(msg: T) -> Self where T:std::fmt::Display {
+    fn custom<T>(msg: T) -> Self
+    where
+        T: std::fmt::Display,
+    {
         Self::Custom(msg.to_string())
     }
 }
 
 impl serde::de::Error for Error {
-    fn custom<T>(msg: T) -> Self where T:std::fmt::Display {
+    fn custom<T>(msg: T) -> Self
+    where
+        T: std::fmt::Display,
+    {
         Self::Custom(msg.to_string())
     }
 }
@@ -88,7 +94,7 @@ pub enum Compression {
     None,
     Deflate(u32),
     GZip(u32),
-    ZLib(u32)
+    ZLib(u32),
 }
 
 impl Default for Compression {
@@ -120,7 +126,9 @@ impl FileHeader {
 
     pub fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         let name_bytes = self.header_name.as_bytes();
-        writer.write_u16::<ByteOrder>(name_bytes.len() as u16).map_err(Error::IoError)?;
+        writer
+            .write_u16::<ByteOrder>(name_bytes.len() as u16)
+            .map_err(Error::IoError)?;
         writer.write(name_bytes).map_err(Error::IoError)?;
         writer.write_u8(self.version).map_err(Error::IoError)?;
 
@@ -129,15 +137,15 @@ impl FileHeader {
             Compression::Deflate(v) => {
                 writer.write_u8(1).map_err(Error::IoError)?;
                 writer.write_u32::<ByteOrder>(v).map_err(Error::IoError)?;
-            },
+            }
             Compression::GZip(v) => {
                 writer.write_u8(2).map_err(Error::IoError)?;
                 writer.write_u32::<ByteOrder>(v).map_err(Error::IoError)?;
-            },
+            }
             Compression::ZLib(v) => {
                 writer.write_u8(3).map_err(Error::IoError)?;
                 writer.write_u32::<ByteOrder>(v).map_err(Error::IoError)?;
-            },
+            }
         };
 
         Ok(())
@@ -167,6 +175,10 @@ impl FileHeader {
             v => return Err(Error::InvalidCompression(v)),
         };
 
-        Ok(Self { compression, version, header_name })
+        Ok(Self {
+            compression,
+            version,
+            header_name,
+        })
     }
 }
