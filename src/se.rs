@@ -2,12 +2,13 @@ use std::io::Write;
 
 use byteorder::WriteBytesExt;
 use flate2::write::{DeflateEncoder, GzEncoder, ZlibEncoder};
+use serde::Serialize;
 
 use crate::{Compression, Error, FileHeader, ByteOrder};
 
-pub fn to_bytes<T: serde::Serialize>(value: &T) -> Result<Vec<u8>, Error> {
+pub fn to_bytes<T: serde::Serialize>(value: &T, compression: Compression) -> Result<Vec<u8>, Error> {
     let mut buffer = Vec::new();
-    let mut serializer = Serializer::new(&mut buffer, Compression::default())?;
+    let mut serializer = Serializer::new(&mut buffer, compression)?;
     value.serialize(&mut serializer)?;
     drop(serializer);
 
@@ -195,7 +196,7 @@ impl<'a, 'b> serde::ser::Serializer for &'a mut Serializer<'b> {
         _variant: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error> {
-        self.0.write_u8(crate::data_ids::NEWTYPE_VARIANT_ID).map_err(Error::IoError)?;
+        self.0.write_u8(crate::data_ids::ENUM_VARIANT_ID).map_err(Error::IoError)?;
         self.0.write_u32::<ByteOrder>(variant_index).map_err(Error::IoError)?;
         value.serialize(self)
     }
@@ -230,7 +231,7 @@ impl<'a, 'b> serde::ser::Serializer for &'a mut Serializer<'b> {
         _variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        self.0.write_u8(crate::data_ids::TUPLE_VARIANT_ID).map_err(Error::IoError)?;
+        self.0.write_u8(crate::data_ids::ENUM_VARIANT_ID).map_err(Error::IoError)?;
         self.0.write_u32::<ByteOrder>(variant_index).map_err(Error::IoError)?;
         self.0.write_u32::<ByteOrder>(len as u32).map_err(Error::IoError)?;
         Ok(self)
@@ -260,7 +261,7 @@ impl<'a, 'b> serde::ser::Serializer for &'a mut Serializer<'b> {
         _variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        self.0.write_u8(crate::data_ids::STRUCT_VARIANT_ID).map_err(Error::IoError)?;
+        self.0.write_u8(crate::data_ids::ENUM_VARIANT_ID).map_err(Error::IoError)?;
         self.0.write_u32::<ByteOrder>(variant_index).map_err(Error::IoError)?;
         self.0.write_u32::<ByteOrder>(len as u32).map_err(Error::IoError)?;
         Ok(self)
@@ -351,9 +352,7 @@ impl<'a, 'b> serde::ser::SerializeStruct for &'a mut Serializer<'b> {
         key: &'static str,
         value: &T,
     ) -> Result<(), Self::Error> {
-        let key_bytes = key.as_bytes();
-        self.0.write_u32::<ByteOrder>(key_bytes.len() as u32).map_err(Error::IoError)?;
-        self.0.write(key_bytes).map_err(Error::IoError)?;
+        key.serialize(&mut **self)?;
         value.serialize(&mut **self)?;
         Ok(())
     }
@@ -372,9 +371,7 @@ impl<'a, 'b> serde::ser::SerializeStructVariant for &'a mut Serializer<'b> {
         key: &'static str,
         value: &T,
     ) -> Result<(), Self::Error> {
-        let key_bytes = key.as_bytes();
-        self.0.write_u32::<ByteOrder>(key_bytes.len() as u32).map_err(Error::IoError)?;
-        self.0.write(key_bytes).map_err(Error::IoError)?;
+        key.serialize(&mut **self)?;
         value.serialize(&mut **self)?;
         Ok(())
     }
@@ -395,9 +392,11 @@ mod tests {
     use super::*;
 
     fn no_compression_serialization_test<T: serde::Serialize>(value: &T) -> Vec<u8> {
-        let serialized = to_bytes(value).unwrap();
-        assert!(serialized.len() >= 8);
-        assert_eq!(&serialized[0..8], &[0, 4, 83, 66, 73, 70, 1, 0]);
+        let compression = Compression::None;
+        let default_hdr_bytes = FileHeader::new(compression).to_bytes().unwrap();
+        let serialized = to_bytes(value, compression).unwrap();
+        assert!(serialized.len() >= default_hdr_bytes.len());
+        assert_eq!(&serialized[0..8], default_hdr_bytes.as_slice());
 
         (&serialized[8..]).to_vec()
     }
@@ -477,16 +476,16 @@ mod tests {
         let test = no_compression_serialization_test(&TestEnum::Unit);
         assert_eq!(test.as_slice(), &[data_ids::UNIT_VARIANT_ID, 0, 0, 0, 0]);
         let test = no_compression_serialization_test(&TestEnum::NewType(1));
-        assert_eq!(test.as_slice(), &[data_ids::NEWTYPE_VARIANT_ID, 0, 0, 0, 1, data_ids::U8_ID, 1]);
+        assert_eq!(test.as_slice(), &[data_ids::ENUM_VARIANT_ID, 0, 0, 0, 1, data_ids::U8_ID, 1]);
         let test = no_compression_serialization_test(&TestEnum::Tuple(1, 2));
-        assert_eq!(test.as_slice(), &[data_ids::TUPLE_VARIANT_ID, 0, 0, 0, 2, 0, 0, 0, 2, data_ids::U8_ID, 1, data_ids::U8_ID, 2]);
+        assert_eq!(test.as_slice(), &[data_ids::ENUM_VARIANT_ID, 0, 0, 0, 2, 0, 0, 0, 2, data_ids::U8_ID, 1, data_ids::U8_ID, 2]);
         let test = no_compression_serialization_test(&TestEnum::Struct { a: 1, b: 2 });
         assert_eq!(test.as_slice(), &[
-            data_ids::STRUCT_VARIANT_ID,
+            data_ids::ENUM_VARIANT_ID,
             0, 0, 0, 3, // variant index
             0, 0, 0, 2, // length
-            0, 0, 0, 1, 97, data_ids::U8_ID, 1, // a
-            0, 0, 0, 1, 98, data_ids::U8_ID, 2  // b
+            data_ids::STR_ID, 0, 0, 0, 1, 97, data_ids::U8_ID, 1, // a
+            data_ids::STR_ID, 0, 0, 0, 1, 98, data_ids::U8_ID, 2  // b
         ]);
     }
 
@@ -520,8 +519,8 @@ mod tests {
         assert_eq!(test.as_slice(), &[
             data_ids::MAP_ID,
             0, 0, 0, 2, // length
-            0, 0, 0, 1, 97, data_ids::U8_ID, 1, // a
-            0, 0, 0, 1, 98, data_ids::U8_ID, 2  // b
+            data_ids::STR_ID, 0, 0, 0, 1, 97, data_ids::U8_ID, 1, // a
+            data_ids::STR_ID, 0, 0, 0, 1, 98, data_ids::U8_ID, 2  // b
         ]);
     }
 
@@ -532,11 +531,24 @@ mod tests {
         map.insert(3, 4);
 
         let test = no_compression_serialization_test(&map);
-        assert_eq!(test.as_slice(), &[
-            data_ids::MAP_ID,
-            0, 0, 0, 2, // length
-            data_ids::U8_ID, 1, data_ids::U8_ID, 2,
-            data_ids::U8_ID, 3, data_ids::U8_ID, 4,
-        ]);
+        assert_eq!(&test[..5], &[ data_ids::MAP_ID, 0, 0, 0, 2 ]);
+
+        let mut slices = Vec::new();
+        for i in 0..(test.len() - 5) / 4 {
+            slices.push(&test[5 + i * 4..5 + (i + 1) * 4]);
+        }
+
+        slices.sort_by(|a, b| a[1].cmp(&b[1]));
+        assert_eq!(slices.len(), 2);
+        assert_eq!(slices[0], &[data_ids::U8_ID, 1, data_ids::U8_ID, 2]);
+        assert_eq!(slices[1], &[data_ids::U8_ID, 3, data_ids::U8_ID, 4]);
+    }
+
+    #[test]
+    fn test_option_serialization() {
+        let test = no_compression_serialization_test(&Option::<u8>::None);
+        assert_eq!(test.as_slice(), &[data_ids::NULL_ID]);
+        let test = no_compression_serialization_test(&Option::<u8>::Some(1));
+        assert_eq!(test.as_slice(), &[data_ids::U8_ID, 1]);
     }
 }

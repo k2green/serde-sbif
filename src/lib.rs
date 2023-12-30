@@ -6,6 +6,7 @@ use err_derive::Error;
 pub(crate) type ByteOrder = byteorder::BigEndian;
 
 pub mod se;
+pub mod de;
 
 pub(crate) mod data_ids {
     pub const NULL_ID: u8 = 0;
@@ -26,11 +27,9 @@ pub(crate) mod data_ids {
     pub const SEQ_ID: u8 = 15;
     pub const TUPLE_ID: u8 = 16;
     pub const UNIT_VARIANT_ID: u8 = 17;
-    pub const NEWTYPE_VARIANT_ID: u8 = 18;
-    pub const TUPLE_VARIANT_ID: u8 = 19;
-    pub const STRUCT_VARIANT_ID: u8 = 20;
-    pub const TUPLE_STRUCT_ID: u8 = 21;
-    pub const MAP_ID: u8 = 22;
+    pub const ENUM_VARIANT_ID: u8 = 18;
+    pub const TUPLE_STRUCT_ID: u8 = 19;
+    pub const MAP_ID: u8 = 20;
 }
 
 #[derive(Debug, Error)]
@@ -45,9 +44,37 @@ pub enum Error {
     Custom(String),
     #[error(display = "Lengths are required for the sbif format")]
     LengthRequired,
+    #[error(display = "Unexpected string")]
+    UnexpectedString,
+    #[error(display = "Invalid access order. You cannot access 2 map keys or 2 map values in a row")]
+    InvalidMapAccess,
+    #[error(display = "Invalid sbif header: expected 'SBIF', found {}", _0)]
+    InvalidHeader(String),
+    #[error(display = "Invalid data id: expected {}, found {}", expected, found)]
+    InvalidDataId {
+        expected: String,
+        found: u8,
+    },
+    #[error(display = "Invalid sbif version: expected {}, found {}", expected, found)]
+    InvalidVersion {
+        expected: u8,
+        found: u8,
+    },
+    #[error(display = "{}: expected {}, actual {}", message, expected, actual)]
+    InvalidLength {
+        expected: usize,
+        actual: usize,
+        message: String
+    },
 }
 
 impl serde::ser::Error for Error {
+    fn custom<T>(msg: T) -> Self where T:std::fmt::Display {
+        Self::Custom(msg.to_string())
+    }
+}
+
+impl serde::de::Error for Error {
     fn custom<T>(msg: T) -> Self where T:std::fmt::Display {
         Self::Custom(msg.to_string())
     }
@@ -63,7 +90,7 @@ pub enum Compression {
 
 impl Default for Compression {
     fn default() -> Self {
-        Self::None
+        Self::Gzip(6)
     }
 }
 
@@ -71,6 +98,12 @@ pub(crate) struct FileHeader {
     pub(crate) compression: Compression,
     pub(crate) version: u8,
     pub(crate) header_name: String,
+}
+
+impl Default for FileHeader {
+    fn default() -> Self {
+        Self::new(Compression::default())
+    }
 }
 
 impl FileHeader {
@@ -107,6 +140,13 @@ impl FileHeader {
         Ok(())
     }
 
+    #[cfg(test)]
+    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buffer = Vec::new();
+        self.to_writer(&mut buffer)?;
+        Ok(buffer)
+    }
+
     pub fn from_reader<R: Read>(reader: &mut R) -> Result<Self, Error> {
         let header_name = {
             let name_length = reader.read_u16::<ByteOrder>().map_err(Error::IoError)? as usize;
@@ -124,6 +164,6 @@ impl FileHeader {
             v => return Err(Error::InvalidCompression(v)),
         };
 
-        Ok(Self { compression, version, header_name  })
+        Ok(Self { compression, version, header_name })
     }
 }
