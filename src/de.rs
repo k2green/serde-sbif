@@ -203,8 +203,12 @@ impl<'de, 'a, 'b> serde::de::Deserializer<'de> for &'a mut Deserializer<'b> {
     }
 
     fn deserialize_option<V: serde::de::Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-        match self.0.read_u8().map_err(Error::IoError)? {
-            data_ids::NULL_ID => visitor.visit_none(),
+        let peek_id = self.0.peek().read_u8().map_err(Error::IoError)?;
+        match peek_id {
+            data_ids::NULL_ID => {
+                self.0.read_u8().map_err(Error::IoError)?;
+                visitor.visit_none()
+            },
             _ => visitor.visit_some(self),
         }
     }
