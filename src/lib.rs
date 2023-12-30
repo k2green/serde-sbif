@@ -6,6 +6,7 @@ use err_derive::Error;
 pub(crate) type ByteOrder = byteorder::BigEndian;
 
 pub mod se;
+pub mod de;
 
 pub(crate) mod data_ids {
     pub const NULL_ID: u8 = 0;
@@ -45,9 +46,37 @@ pub enum Error {
     Custom(String),
     #[error(display = "Lengths are required for the sbif format")]
     LengthRequired,
+    #[error(display = "Unexpected string")]
+    UnexpectedString,
+    #[error(display = "Invalid access order. You cannot access 2 map keys or 2 map values in a row")]
+    InvalidMapAccess,
+    #[error(display = "Invalid sbif header: expected 'SBIF', found {}", _0)]
+    InvalidHeader(String),
+    #[error(display = "Invalid data id: expected {}, found {}", expected, found)]
+    InvalidDataId {
+        expected: String,
+        found: u8,
+    },
+    #[error(display = "Invalid sbif version: expected {}, found {}", expected, found)]
+    InvalidVersion {
+        expected: u8,
+        found: u8,
+    },
+    #[error(display = "{}: expected {}, actual {}", message, expected, actual)]
+    InvalidLength {
+        expected: usize,
+        actual: usize,
+        message: String
+    },
 }
 
 impl serde::ser::Error for Error {
+    fn custom<T>(msg: T) -> Self where T:std::fmt::Display {
+        Self::Custom(msg.to_string())
+    }
+}
+
+impl serde::de::Error for Error {
     fn custom<T>(msg: T) -> Self where T:std::fmt::Display {
         Self::Custom(msg.to_string())
     }
@@ -124,6 +153,6 @@ impl FileHeader {
             v => return Err(Error::InvalidCompression(v)),
         };
 
-        Ok(Self { compression, version, header_name  })
+        Ok(Self { compression, version, header_name })
     }
 }

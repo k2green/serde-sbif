@@ -2,6 +2,7 @@ use std::io::Write;
 
 use byteorder::WriteBytesExt;
 use flate2::write::{DeflateEncoder, GzEncoder, ZlibEncoder};
+use serde::Serialize;
 
 use crate::{Compression, Error, FileHeader, ByteOrder};
 
@@ -351,9 +352,7 @@ impl<'a, 'b> serde::ser::SerializeStruct for &'a mut Serializer<'b> {
         key: &'static str,
         value: &T,
     ) -> Result<(), Self::Error> {
-        let key_bytes = key.as_bytes();
-        self.0.write_u32::<ByteOrder>(key_bytes.len() as u32).map_err(Error::IoError)?;
-        self.0.write(key_bytes).map_err(Error::IoError)?;
+        key.serialize(&mut **self)?;
         value.serialize(&mut **self)?;
         Ok(())
     }
@@ -372,9 +371,7 @@ impl<'a, 'b> serde::ser::SerializeStructVariant for &'a mut Serializer<'b> {
         key: &'static str,
         value: &T,
     ) -> Result<(), Self::Error> {
-        let key_bytes = key.as_bytes();
-        self.0.write_u32::<ByteOrder>(key_bytes.len() as u32).map_err(Error::IoError)?;
-        self.0.write(key_bytes).map_err(Error::IoError)?;
+        key.serialize(&mut **self)?;
         value.serialize(&mut **self)?;
         Ok(())
     }
@@ -485,8 +482,8 @@ mod tests {
             data_ids::STRUCT_VARIANT_ID,
             0, 0, 0, 3, // variant index
             0, 0, 0, 2, // length
-            0, 0, 0, 1, 97, data_ids::U8_ID, 1, // a
-            0, 0, 0, 1, 98, data_ids::U8_ID, 2  // b
+            data_ids::STR_ID, 0, 0, 0, 1, 97, data_ids::U8_ID, 1, // a
+            data_ids::STR_ID, 0, 0, 0, 1, 98, data_ids::U8_ID, 2  // b
         ]);
     }
 
@@ -520,8 +517,8 @@ mod tests {
         assert_eq!(test.as_slice(), &[
             data_ids::MAP_ID,
             0, 0, 0, 2, // length
-            0, 0, 0, 1, 97, data_ids::U8_ID, 1, // a
-            0, 0, 0, 1, 98, data_ids::U8_ID, 2  // b
+            data_ids::STR_ID, 0, 0, 0, 1, 97, data_ids::U8_ID, 1, // a
+            data_ids::STR_ID, 0, 0, 0, 1, 98, data_ids::U8_ID, 2  // b
         ]);
     }
 
